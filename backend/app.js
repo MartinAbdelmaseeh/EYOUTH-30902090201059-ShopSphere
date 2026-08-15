@@ -1,7 +1,8 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
-const path = require('path');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
@@ -9,22 +10,49 @@ const cartRoutes = require('./routes/cartRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const reviewRoutes = require('./services/reviews/routes/reviewRoutes');
 const statisticsRoutes = require('./services/statistics/routes/statisticsRoutes');
+const { connectMongo } = require('./config/mongo');
 
 const app = express();
 
-const ALLOWED_ORIGINS = ['http://localhost:5173', 'http://localhost:3000'];
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(helmet());
+
+
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
 
 app.use(cors({
   origin: ALLOWED_ORIGINS,
-  credentials: true               
+  credentials: true
 }));
 
-app.use(express.json());           
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());           
+app.use(cookieParser());
 
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(async (req, res, next) => {
+  try {
+    await connectMongo();
+    next();
+  } catch (err) {
+    console.error('❌ MongoDB connection error:', err.message);
+    if (req.path.startsWith('/api/reviews') || req.path.startsWith('/api/statistics')) {
+      return res.status(503).json({ message: 'Reviews/statistics are temporarily unavailable.' });
+    }
+    next();
+  }
+});
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is up and running!' });
@@ -42,7 +70,7 @@ app.use((req, res, next) => {
 });
 
 app.use((err, req, res, next) => {
-  
+
   if (err.name === 'MulterError') {
     const message = err.code === 'LIMIT_FILE_SIZE'
       ? 'Image must be smaller than 5MB.'

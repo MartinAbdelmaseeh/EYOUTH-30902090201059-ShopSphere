@@ -1,28 +1,11 @@
-const path = require('path');
-const fs = require('fs');
 const multer = require('multer');
+const { put, del } = require('@vercel/blob');
 
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
-
-
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
 
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, UPLOAD_DIR);
-  },
-  filename: (req, file, cb) => {
-
-    const ext = path.extname(file.originalname).toLowerCase();
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${uniqueSuffix}${ext}`);
-  }
-});
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
   if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
@@ -38,17 +21,26 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_SIZE }
 });
 
-const deleteUploadedFile = (imageUrl) => {
-  if (!imageUrl || !imageUrl.startsWith('/uploads/')) return;
+async function uploadToBlob(file) {
+  const ext = (file.originalname.match(/\.[^.]+$/) || [''])[0].toLowerCase();
+  const key = `products/${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
 
-  const filename = path.basename(imageUrl);
-  const filePath = path.join(UPLOAD_DIR, filename);
-
-  fs.unlink(filePath, (err) => {
-    if (err && err.code !== 'ENOENT') {
-      console.error('⚠️  Failed to delete old product image:', err.message);
-    }
+  const blob = await put(key, file.buffer, {
+    access: 'public',
+    contentType: file.mimetype,
   });
-};
 
-module.exports = { upload, deleteUploadedFile, UPLOAD_DIR };
+  return blob.url;
+}
+
+async function deleteUploadedFile(imageUrl) {
+  if (!imageUrl || !imageUrl.includes('.blob.vercel-storage.com')) return;
+
+  try {
+    await del(imageUrl);
+  } catch (err) {
+    console.error('⚠️  Failed to delete product image from Blob:', err.message);
+  }
+}
+
+module.exports = { upload, uploadToBlob, deleteUploadedFile };

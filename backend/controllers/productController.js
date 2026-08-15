@@ -1,5 +1,5 @@
 const Product = require('../models/Product');
-const { deleteUploadedFile } = require('../middleware/uploadMiddleware');
+const { uploadToBlob, deleteUploadedFile } = require('../middleware/uploadMiddleware');
 
 const getProducts = async (req, res) => {
   try {
@@ -58,11 +58,13 @@ const createProduct = async (req, res) => {
     const { title, description, price, category, imageUrl, stock } = req.body;
 
     if (!title || !price) {
-      if (req.file) deleteUploadedFile(`/uploads/${req.file.filename}`);
       return res.status(400).json({ message: 'Title and price are required fields' });
     }
 
-    const finalImageUrl = req.file ? `/uploads/${req.file.filename}` : (imageUrl || null);
+    // req.file is now an in-memory buffer (multer.memoryStorage), not a
+    // file already sitting on disk — it has to be uploaded to Blob before
+    // we have a URL worth saving.
+    const finalImageUrl = req.file ? await uploadToBlob(req.file) : (imageUrl || null);
 
     const newProduct = await Product.create({
       title,
@@ -75,7 +77,6 @@ const createProduct = async (req, res) => {
 
     res.status(201).json(newProduct);
   } catch (error) {
-    if (req.file) deleteUploadedFile(`/uploads/${req.file.filename}`);
     res.status(500).json({ message: 'Error creating product', error: error.message });
   }
 };
@@ -87,11 +88,10 @@ const updateProduct = async (req, res) => {
 
     const existingProduct = await Product.findById(id);
     if (!existingProduct) {
-      if (req.file) deleteUploadedFile(`/uploads/${req.file.filename}`);
       return res.status(404).json({ message: 'Product not found' });
     }
 
-    const newImageUrl = req.file ? `/uploads/${req.file.filename}` : (imageUrl ?? existingProduct.image_url);
+    const newImageUrl = req.file ? await uploadToBlob(req.file) : (imageUrl ?? existingProduct.image_url);
 
     const updatedProduct = await Product.update(id, {
       title: title ?? existingProduct.title,
@@ -103,12 +103,11 @@ const updateProduct = async (req, res) => {
     });
 
     if (req.file && existingProduct.image_url !== newImageUrl) {
-      deleteUploadedFile(existingProduct.image_url);
+      await deleteUploadedFile(existingProduct.image_url);
     }
 
     res.json({ message: 'Product updated successfully', product: updatedProduct });
   } catch (error) {
-    if (req.file) deleteUploadedFile(`/uploads/${req.file.filename}`);
     res.status(500).json({ message: 'Error updating product', error: error.message });
   }
 };
@@ -123,7 +122,7 @@ const deleteProduct = async (req, res) => {
     }
 
     await Product.delete(id);
-    deleteUploadedFile(existingProduct.image_url);
+    await deleteUploadedFile(existingProduct.image_url);
     res.json({ message: 'Product deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting product', error: error.message });
