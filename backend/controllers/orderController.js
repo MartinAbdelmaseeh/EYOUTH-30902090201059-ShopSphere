@@ -10,13 +10,14 @@ const createOrder = async (req, res) => {
     }
 
     const order = await Order.createFromCart(req.user.id, cartItems);
-    await Cart.clearCart(req.user.id);
 
-   
     recordOrderPlaced(order);
 
     res.status(201).json({ message: 'Order placed successfully', order });
   } catch (error) {
+    if (error.message.includes('Not enough stock') || error.message.includes('no longer available')) {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({ message: 'Error creating order', error: error.message });
   }
 };
