@@ -12,21 +12,46 @@ class Order {
       0
     );
 
-    return prisma.order.create({
-      data: {
-        user_id: userId,
-        total_amount: totalAmount,
-        status: 'pending',
-        items: {
-          create: cartItems.map((item) => ({
-            product_id: item.product_id,
-            title: item.title,
-            price: item.price,
-            quantity: item.quantity,
-          })),
+
+    return prisma.$transaction(async (tx) => {
+      
+      for (const item of cartItems) {
+        const product = await tx.product.findUnique({ where: { id: item.product_id } });
+        if (!product) {
+          throw new Error(`"${item.title}" is no longer available.`);
+        }
+        if (product.stock < item.quantity) {
+          throw new Error(`Not enough stock for "${product.title}" — only ${product.stock} left.`);
+        }
+      }
+
+      const order = await tx.order.create({
+        data: {
+          user_id: userId,
+          total_amount: totalAmount,
+          status: 'pending',
+          items: {
+            create: cartItems.map((item) => ({
+              product_id: item.product_id,
+              title: item.title,
+              price: item.price,
+              quantity: item.quantity,
+            })),
+          },
         },
-      },
-      include: { items: true },
+        include: { items: true },
+      });
+
+      for (const item of cartItems) {
+        await tx.product.update({
+          where: { id: item.product_id },
+          data: { stock: { decrement: item.quantity } },
+        });
+      }
+
+      await tx.cartItem.deleteMany({ where: { cart: { user_id: userId } } });
+
+      return order;
     });
   }
 
