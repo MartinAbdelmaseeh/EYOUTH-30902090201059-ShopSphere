@@ -6,9 +6,9 @@ generator client {
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
   extensions = [uuidOssp(map: "uuid-ossp")]
 }
-
 model User {
   id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   name       String   @db.VarChar(255)

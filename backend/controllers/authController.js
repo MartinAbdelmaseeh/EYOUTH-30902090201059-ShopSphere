@@ -4,6 +4,12 @@ const User = require('../models/User');
 const { sendWelcomeEmail } = require('../services/email/emailService');
 const { recordUserRegistered } = require('../services/statistics/statsService');
 
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  maxAge: 24 * 60 * 60 * 1000
+};
 
 const register = async (req, res) => {
   try {
@@ -36,12 +42,7 @@ const register = async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000
-    });
+    res.cookie('token', token, COOKIE_OPTIONS);
 
     sendWelcomeEmail(newUser);
     recordUserRegistered(newUser);
@@ -79,12 +80,7 @@ const login = async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000
-    });
+    res.cookie('token', token, COOKIE_OPTIONS);
 
     res.json({
       message: 'Logged in successfully',
@@ -146,12 +142,7 @@ const updateProfile = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000
-    });
+    res.cookie('token', token, COOKIE_OPTIONS);
 
     res.json({
       message: 'Profile updated successfully',
@@ -162,9 +153,13 @@ const updateProfile = async (req, res) => {
   }
 };
 
-// Log out
+// Log out 
 const logout = (req, res) => {
-  res.clearCookie('token');
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  });
   res.json({ message: 'Logged out successfully' });
 };
 
